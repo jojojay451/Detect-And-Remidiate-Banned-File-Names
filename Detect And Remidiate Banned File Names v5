@@ -1,0 +1,148 @@
+##this powershell script automatically scans a preconfigured set of dirs for forbidden file names. 
+##If a forbidden name is found, a notification is displayed to the user prompting them to change the filename or contact their admin.
+##written by Josiah Martin on behalf of VSO
+
+
+##If remediate is true, the script will detect and display a popup. If it is false, the script will exit silently with either a 0 or a 1
+$remediate=$true
+
+#Declare debug
+$debug=$true
+$Verboselog=$false
+
+#allow or dissalow the program to rename files. If disabled, it will simply notify the user of files
+$RenameEnabled=$false
+
+#declare array of bad terms
+#Harry reccomends excluding  "..." "%" "—" "&" "%" "~"
+$BannedTermsArray=@("...","%","—","&","~")
+
+#declare array of bad file names
+$BadFileNamesArray=@()
+
+#declare bool explaining whether a badfilename was found or not
+$BadFileNameWasFound=$false
+
+#declare array of files to search(empty)
+$FilesToSearch=@()
+
+
+#$UserProfile = user home directory
+$UserProfile = [Environment]::GetFolderPath("UserProfile")
+
+if ([string]::IsNullOrWhiteSpace($UserProfile)) {
+    Write-Error "User profile path could not be resolved."
+    exit 1
+}
+
+
+#declare array of dirs to search
+$DirsToSearch = @(
+    Join-Path $UserProfile "OneDrive"
+    Join-Path $UserProfile "Documents"
+    Join-Path $UserProfile "Downloads"
+)
+
+#less graceful way to declare array of dirs to search:
+#$DirsToSearch = @(
+#    "C:\Users\$env:USERNAME\OneDrive",
+#    "C:\Users\$env:USERNAME\Documents",
+#    "C:\Users\$env:USERNAME\Downloads"
+    #$env:USERNAME automatically grabs the username of the current user
+#)
+
+
+if ($debug -eq $true) {
+    echo ("These strings are not allowed in filenames: ",$BannedTermsArray) 
+    echo ("`nThese directories will be searched for filenames with banned strings: " ,$DirsToSearch)
+}
+
+
+
+#loop through to findd all of the badly named files
+foreach ($directory in $DirsToSearch) {
+    if ($debug -eq $true) {
+        Write-Host "`n`n inspecting directory: $directory"
+    }
+
+    #test that directory exists
+    if (-Not (Test-Path $directory)) {
+        if ($debug -eq $true) {
+            echo "Directory not found: $directory . No search of this directory will be conducted."
+        }
+    }
+
+    else {
+        #grab list of files and put them in the files to search array
+        try {
+            $FileNames = Get-ChildItem -Path $Directory -Recurse -ErrorAction SilentlyContinue | Select-Object -ExpandProperty FullName
+        } catch {
+          Write-Warning "Failed to scan $directory . This is likely due to permission errors."
+          continue
+        }
+
+
+        #for each file, inspect it to see if it has banned terms. If it does, add the banned term to $BannedTermsArray
+        foreach ($ItemBeingInspected in $FileNames) {
+            $BadFileName=$false
+            if ($VerboseLog -eq $true) {
+                Write-Host "inspecting: $ItemBeingInspected"
+            }        
+            foreach ($BannedTerm in $BannedTermsArray) {
+                if ($ItemBeingInspected.Contains($BannedTerm)){
+                    $BadFileName=$True
+                    $BadFileNameWasFound=$True
+                    if ($debug -eq $true) {
+                        echo "found badfilename: $ItemBeingInspected"
+                    }
+                }
+            }
+            If ($BadFileName -eq $true){
+                $BadFileNamesArray += $ItemBeingInspected
+            }
+
+        }
+    }
+
+}
+
+if ($BadFileNameWasFound -eq $false) {
+    echo "`n`nAll file names in the searched directories are compliant with administrative policy"
+    #exit 0 tells intune that the script did not find any issues.
+    exit 0
+}
+
+if ($BadFileNameWasFound -eq $true) {
+    $BadFileNameWasFound=$false
+    Add-Type -AssemblyName System.Windows.Forms
+    # Build prettier file list string with newlinesto replace array
+    $filesList = $BadFileNamesArray -join "`r`n"
+    echo "`n`n`n found badfilenames:`n $filesList"
+    # Build banned terms string with commas or newlines
+    $termsList = $BannedTermsArray -join ", "
+
+    # Build full message
+    $message = @"
+The following characters are disallowed in file names by your admin:`n
+$termsList
+`n`nSome of your files have disallowed characters.
+-If you created these files manually, please manually rename them.
+-If these files where automatically generated, or if you need help, reach out to your administrator.
+
+The following files contain disallowed characters:`n
+$filesList
+"@
+    
+    #show popup
+    if ($remediate -eq $true) {
+        try {
+          Add-Type -AssemblyName System.Windows.Forms
+          [System.Windows.Forms.MessageBox]::Show($message, "Disallowed Files Found", [System.Windows.Forms.MessageBoxButtons]::OK, [System.Windows.Forms.MessageBoxIcon]::Warning)
+        } catch {
+            Write-Warning "Unable to show popup. Message output below:`n$message"
+        }
+    }
+
+    #exit 1 tells intune that the issue in question was detected
+    exit 1
+}
