@@ -14,8 +14,22 @@ $Verboselog=$false
 $RenameEnabled=$false
 
 #declare array of bad terms
-#Harry reccomends excluding  "..." "%" "—" "&" "%" "~"
+#HB reccomends excluding  "..." "%" "—" "&" "%" "~"
 $BannedTermsArray=@("...","%","—","&","~")
+
+##Hyphen-minus -
+##Unicode: U+002D
+
+##En dash –
+##Unicode: U+2013
+
+##Em dash —
+##Unicode: U+2014
+
+##minus sign −  
+##Unicode 2212
+
+##only the Em dash is blocked currently
 
 #declare array of bad file names
 $BadFileNamesArray=@()
@@ -125,6 +139,7 @@ if ($BadFileNameWasFound -eq $true) {
     $message = @"
 The following characters are disallowed in file names by your admin:`n
 $termsList
+Note: the Hyphen-Minus sign "-" is allowed, but the em dash "—" is banned. The Hyphen-Minus sign is on your keyboard, the em dash is frequently used by chatgpt.
 `n`nSome of your files have disallowed characters.
 -If you created these files manually, please manually rename them.
 -If these files where automatically generated, or if you need help, reach out to your administrator.
